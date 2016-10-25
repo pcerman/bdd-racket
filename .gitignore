@@ -1,7 +1,6 @@
-*.ss~
-*.ss#*
-.#*.ss
+*~
+*.bak
+*.rkt#*
+.#*.rkt
 
-*.scm~
-*.scm#*
-.#*.scm
+compiled/
