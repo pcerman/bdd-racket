@@ -24,7 +24,7 @@ Copyright (c) 2016 Peter Cerman (https://github.com/pcerman)
 ;; create ROBDD for this boolean expression
 (define bdd (make-robdd ex '(x y z)))
 
-;; create graph representation if this ROBDD and write it into the file
+;; create graph representation of this ROBDD and write it into the file
 (robdd->tgf bdd "bdd.tgf" '(x y z))
 
 ;; count number of solutions which evaluates to boolean value true
@@ -36,6 +36,8 @@ Copyright (c) 2016 Peter Cerman (https://github.com/pcerman)
 ;; it returns: '(or (and x (or (and y z) (and (not y) (not z))))
 ;;                  (and (not x) (or (and y (not z)) (and (not y) z))))
 ```
+
+ROBDD graph representation from example: ![bdd.tgf](examples/bdd.png)
 
 ### References
 
