@@ -9,6 +9,7 @@
 ;;
 
 (require "bdd.rkt"
+         "zdd.rkt"
          "robdd.rkt"
          "utils.rkt")
 
@@ -160,3 +161,57 @@
               'queens-count "~A is incorect value for number of queens(4) solutions!" qn4)
   (bdd-assert (eqv? qn5 10)
               'queens-count "~A is incorect value for number of queens(5) solutions!" qn5))
+
+
+;;----------------------------------------------------------------------------
+;; Dominoes tiling
+;;----------------------------------------------------------------------------
+;; example how checkerboard 4x2 is numbered
+;;
+;;          +---+---+---+---+
+;;          | 5 | 6 | 7 | 8 |
+;;          |---+---+---+---|
+;;          | 1 | 2 | 3 | 4 |
+;;          +---+---+---+---+
+;;
+
+;; How many different tilings of dominoes exists on the checkerboard 4x2 ?
+
+(define (dominoes)
+  ;; h_x is horizontal dominoe covering squares x and (x+1)
+  ;; v_x is vertical dominoe covering squares x and (x+4)
+  (define vars '(v1 v2 v3 v4 h1 h2 h3 h5 h6 h7))
+
+  (define ex-c '((h1 v1)    ;; square S1
+                 (h1 h2 v2) ;; square S2
+                 (h2 h3 v3) ;; square S3
+                 (h3 v4)    ;; square S4
+                 (h5 v1)    ;; square S5
+                 (h5 h6 v2) ;; square S6
+                 (h6 h7 v3) ;; square S7
+                 (h7 v4)))  ;; square S8
+  (define ex-x '((v1 h1) (v1 h5)
+                 (v2 h1) (v2 h2) (v2 h5) (v2 h6)
+                 (v3 h2) (v3 h3) (v3 h6) (v3 h7)
+                 (v4 h3) (v4 h7)
+                 (h1 h2) (h2 h3)
+                 (h5 h6) (h6 h7)))
+
+  (>>> cs
+       (map (lambda (ec) (make-zdd `(or ,@ec) vars)) ex-c)
+       (foldl zdd-intersect
+              (>>> xs
+                   (map (lambda (ex)
+                          (make-zdd `(not (and ,@ex)) vars))
+                        ex-x)
+                   (foldl zdd-intersect (car xs) (cdr xs)))
+              cs)))
+
+(define (dominoes-count)
+  (zdd-count (dominoes)))
+
+;;****************************************************************************
+;; test
+(let ([dms (dominoes-count)])
+  (bdd-assert (eqv? dms 5)
+              'dominoes-count "~A is incorect value for number of dominoes solutions!" dms))

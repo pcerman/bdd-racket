@@ -50,4 +50,4 @@
 
 (define (bdd-assert assert fn-name msg . args)
   (when (not assert)
-    (apply error fn-name (string-append "assert - " msg) args)))
+    (apply error fn-name (string-append "assert >>> " msg) args)))

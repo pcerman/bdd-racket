@@ -17,9 +17,6 @@
 ;;****************************************************************************
 
 (provide make-robdd
-         robdd?
-         robdd-value
-         robdd-nodes
          robdd-apply
          robdd-and
          robdd-or
@@ -28,15 +25,9 @@
          robdd-restrict
          robdd-sat-count
          robdd-simplify
-         robdd->tree
-         robdd->b-expr
-         robdd->tgf)
+         robdd->b-expr)
 
 ;;****************************************************************************
-
-(define-datatype robdd robdd?
-  (robdd-value (v boolean?))
-  (robdd-nodes (ns vector?)))
 
 (define (robdd-root dd)
   (cases robdd dd
@@ -214,7 +205,7 @@
   (cases robdd dd
     [robdd-value (v)  (if v (expt 2 nvars) 0)]
     [robdd-nodes (ns) (let-values ([(gt cn) (count (hash) (robdd-root dd))])
-                        cn)]))
+                        (* (expt 2 (sub1 (var (robdd-root dd)))) cn))]))
 
 ;;****************************************************************************
 
@@ -262,23 +253,6 @@
 
 ;;****************************************************************************
 
-(define (robdd->tree dd)
-  (cases robdd dd
-    [robdd-value (v)
-      v]
-
-    [robdd-nodes (ns)
-      (let loop ([i 0] [ht (hash #f #f #t #t)] [tr #f])
-        (if (< i (vector-length ns))
-            (let* ([nd (vector-ref ns i)]
-                   [tr (vector (bdd-node-var nd)
-                               (hash-ref ht (bdd-node-lo nd))
-                               (hash-ref ht (bdd-node-hi nd)))])
-              (loop (add1 i) (hash-set ht i tr) tr))
-            tr))]))
-
-;;****************************************************************************
-
 (define (robdd->b-expr dd vars)
   (define (dd->be x vars var-id)
     (cond [(boolean? x) x]
@@ -298,81 +272,67 @@
 
 ;;****************************************************************************
 
-(define (robdd->tgf dd [port #f] [var-names #f] [t-vals #f])
-  (define t-nodes (if (length-2? t-vals) (list->vector t-vals) '#("._." ".T.")))
+(define (test-robdd)
+  (define be-0 #f)
+  (define be-1 '(and x y))
+  (define be-2 '(and x (not y)))
+  (define be-3 'x)
+  (define be-4 '(and (not x) y))
+  (define be-5 'y)
+  (define be-6 '(xor x y))
+  (define be-7 '(or x y))
+  (define be-8 '(and (not x) (not y)))
+  (define be-9 '(eqv x y))
+  (define be-a '(not y))
+  (define be-b '(or x (not y)))
+  (define be-c '(not x))
+  (define be-d '(or (not x) y))
+  (define be-e '(or (not x) (not y)))
+  (define be-f #t)
 
-  (define (t-node v)
-    (vector-ref t-nodes (if v 1 0)))
+  (define dd-0 (make-robdd be-0 '(x y)))
+  (define dd-1 (make-robdd be-1 '(x y)))
+  (define dd-2 (make-robdd be-2 '(x y)))
+  (define dd-3 (make-robdd be-3 '(x y)))
+  (define dd-4 (make-robdd be-4 '(x y)))
+  (define dd-5 (make-robdd be-5 '(x y)))
+  (define dd-6 (make-robdd be-6 '(x y)))
+  (define dd-7 (make-robdd be-7 '(x y)))
+  (define dd-8 (make-robdd be-8 '(x y)))
+  (define dd-9 (make-robdd be-9 '(x y)))
+  (define dd-a (make-robdd be-a '(x y)))
+  (define dd-b (make-robdd be-b '(x y)))
+  (define dd-c (make-robdd be-c '(x y)))
+  (define dd-d (make-robdd be-d '(x y)))
+  (define dd-e (make-robdd be-e '(x y)))
+  (define dd-f (make-robdd be-f '(x y)))
 
-  (define (bdd-print fn)
-    (cond [(port? port)        (fn port)]
-          [(string? port)      (let ([filename port])
-                                 (when (file-exists? filename)
-                                   (delete-file filename))
-                                 (call-with-output-file filename fn))]
-          [else                (fn (current-output-port))]))
+  (define-syntax test-robdd-count
+    (syntax-rules ()
+      ((_ id dd cn)
+       (let ((sc (robdd-sat-count dd 2)))
+         (bdd-assert (eqv? sc cn)
+                     'robdd-sat-count
+                     "~A (!= ~A) is incorrect value for ~A!" sc cn id)))))
 
-  (cases robdd dd
-    [robdd-value (v)
-      (bdd-print (lambda (port)
-                   (fprintf port "1 ~A~%#~%" (t-node v))))]
+  (test-robdd-count 'dd-0 dd-0 0)
+  (test-robdd-count 'dd-1 dd-1 1)
+  (test-robdd-count 'dd-2 dd-2 1)
+  (test-robdd-count 'dd-3 dd-3 2)
+  (test-robdd-count 'dd-4 dd-4 1)
+  (test-robdd-count 'dd-5 dd-5 2)
+  (test-robdd-count 'dd-6 dd-6 2)
+  (test-robdd-count 'dd-7 dd-7 3)
+  (test-robdd-count 'dd-8 dd-8 1)
+  (test-robdd-count 'dd-9 dd-9 2)
+  (test-robdd-count 'dd-a dd-a 2)
+  (test-robdd-count 'dd-b dd-b 3)
+  (test-robdd-count 'dd-c dd-c 2)
+  (test-robdd-count 'dd-d dd-d 3)
+  (test-robdd-count 'dd-e dd-e 3)
+  (test-robdd-count 'dd-f dd-f 4))
 
-    [robdd-nodes (ns)
-      (define cns (vector-length ns))
-
-      (define max-var (let loop ([i (sub1 cns)] [ma 0])
-                        (if (< i 0) ma
-                            (loop (sub1 i) (max ma (bdd-node-var (vector-ref ns i)))))))
-
-      (define vars (list->vector (if (pair? var-names) var-names
-                                     (map (lambda (n) (format "V~A" n)) (range 1 (add1 max-var))))))
-
-      (define (var-name id)
-        (vector-ref vars (sub1 id)))
-
-      (define (idx-cnd ix)
-        (if (integer? ix) (- cns ix) ix))
-
-      (define (fold-edges fn va)
-        (let loop ([i (sub1 (vector-length ns))] [va va])
-          (if (< i 0) va
-              (let ([nd (vector-ref ns i)])
-                (loop (sub1 i)
-                      (>>> va
-                           (fn #f (bdd-node-var nd)
-                                  (idx-cnd i)
-                                  (idx-cnd (bdd-node-lo nd))
-                                  va)
-
-                           (fn #t (bdd-node-var nd)
-                                  (idx-cnd i)
-                                  (idx-cnd (bdd-node-hi nd))
-                                  va)))))))
-
-      (if (> max-var (vector-length vars))
-          (error 'bdd->tgf "not enough variables for building graph!")
-          (bdd-print (lambda (port)
-                       (>>> ds
-                            (fold-edges (lambda (hi? var sn dn va)
-                                          (when hi?
-                                            (fprintf port "~A ~A~%" sn (var-name var)))
-                                          (if (boolean? dn)
-                                              (list* (add1 (car va))
-                                                     (cons (car va) dn)
-                                                     (cdr va))
-                                              va))
-                                        (list (add1 cns)))
-
-                            (for-each (lambda (nd)
-                                        (fprintf port "~A ~A~%" (car nd) (t-node (cdr nd))))
-                                      (reverse (cdr ds))))
-                       (fprintf port "#~%")
-                       (fold-edges (lambda (hi? var sn dn va)
-                                     (let ([fmt (if hi? "~A ~A *~%" "~A ~A~%")])
-                                       (cond [(boolean? dn) (fprintf port fmt sn va) (add1 va)]
-                                             [else          (fprintf port fmt sn dn) va])))
-                                   (add1 cns))
-                       (void))))]))
+;;(test-robdd)
 
 ;;****************************************************************************
 
