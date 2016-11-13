@@ -49,7 +49,7 @@ _ZDD_
 ;; create ZDD for this boolean expression
 (define zdd (make-zdd ex '(x y z)))
 
-;; create graph representation of this ROBDD and write it into the file
+;; create graph representation of this ZDD and write it into the file
 (bdd->tgf zdd "zdd.tgf" '(x y z))
 
 ;; count number of solutions which evaluates to boolean value true

@@ -16,10 +16,15 @@
 ;;****************************************************************************
 
 (provide make-zdd
+         zdd-off-set
+         zdd-on-set
          zdd-union
          zdd-intersect
          zdd-difference
          zdd-count
+         powerset->zdd
+         subset->zdd
+         zdd->subsets
          zdd->b-expr)
 
 ;;****************************************************************************
@@ -71,11 +76,55 @@
                              [(tt ht u1) (build tt ht (b-subst bexp (car vars) #t) (cdr vars) (add1 var-id))])
                  (make-node tt ht var-id u0 u1))]
           [else
-               (error 'make-bdd "boolean expression '~A' is not reduced!" bexp)]))
+               (error 'make-zdd "boolean expression '~A' is not reduced!" bexp)]))
 
   (let-values ([(tt ht un) (build '(0) (hash) bexp vars 1)])
     (if (boolean? un)
         (zdd-value un)
+        (zdd-nodes (list->vector (reverse (cdr tt)))))))
+
+;;****************************************************************************
+
+(define (zdd-off-set dd var-id)
+  (define (offset tt ht gt z)
+    (cond [(boolean? z)
+               (values tt ht gt z)]
+          [(hash-has-key? gt z)
+               (values tt ht gt (hash-ref gt z))]
+          [(eqv? (zdd-var dd z) var-id)
+               (let-values ([(tt ht gt lo) (offset tt ht gt (zdd-lo dd z))])
+                 (values tt ht (hash-set gt z lo) lo))]
+          [else
+               (let*-values ([(tt ht gt lo) (offset tt ht gt (zdd-lo dd z))]
+                             [(tt ht gt hi) (offset tt ht gt (zdd-hi dd z))]
+                             [(tt ht zn) (make-node tt ht (zdd-var dd z) lo hi)])
+                 (values tt ht (hash-set gt z zn) zn))]))
+
+  (let-values ([(tt ht gt zn) (offset '(0) (hash) (hash) (zdd-root dd))])
+    (if (boolean? zn)
+        (zdd-value zn)
+        (zdd-nodes (list->vector (reverse (cdr tt)))))))
+
+;;****************************************************************************
+
+(define (zdd-on-set dd var-id)
+  (define (offset tt ht gt z)
+    (cond [(boolean? z)
+               (values tt ht gt z)]
+          [(hash-has-key? gt z)
+               (values tt ht gt (hash-ref gt z))]
+          [(eqv? (zdd-var dd z) var-id)
+               (let-values ([(tt ht gt hi) (offset tt ht gt (zdd-hi dd z))])
+                 (values tt ht (hash-set gt z hi) hi))]
+          [else
+               (let*-values ([(tt ht gt lo) (offset tt ht gt (zdd-lo dd z))]
+                             [(tt ht gt hi) (offset tt ht gt (zdd-hi dd z))]
+                             [(tt ht zn) (make-node tt ht (zdd-var dd z) lo hi)])
+                 (values tt ht (hash-set gt z zn) zn))]))
+
+  (let-values ([(tt ht gt zn) (offset '(0) (hash) (hash) (zdd-root dd))])
+    (if (boolean? zn)
+        (zdd-value zn)
         (zdd-nodes (list->vector (reverse (cdr tt)))))))
 
 ;;****************************************************************************
@@ -184,6 +233,71 @@
 
 ;;****************************************************************************
 
+(define (powerset->zdd pset vars)
+  (define (->zdd vars var-id tt id)
+    (if (null? vars)
+        (values tt id)
+        (let-values ([(tt id) (->zdd (cdr vars) (add1 var-id) tt id)])
+          (if (memv (car vars) pset)
+              (values (cons (bdd-node var-id id id) tt)
+                      (if (number? id) (add1 id) 0))
+              (values tt id)))))
+
+  (let-values ([(tt id) (->zdd vars 1 '() #t)])
+    (if (empty? tt)
+        (zdd-value #t)
+        (zdd-nodes (list->vector (reverse tt))))))
+
+;;****************************************************************************
+
+(define (subset->zdd subs vars)
+  (define (->zdd vars var-id tt id)
+    (if (null? vars)
+        (values tt id)
+        (let-values ([(tt id) (->zdd (cdr vars) (add1 var-id) tt id)])
+          (if (memv (car vars) subs)
+              (values (cons (bdd-node var-id #f id) tt)
+                      (if (number? id) (add1 id) 0))
+              (values tt id)))))
+
+  (let-values ([(tt id) (->zdd vars 1 '() #t)])
+    (if (empty? tt)
+        (zdd-value #t)
+        (zdd-nodes (list->vector (reverse tt))))))
+
+;;****************************************************************************
+
+(define (zdd->subsets dd vars)
+  (define (subsets x vars var-id)
+    (cond [(eqv? x #f)
+               '()]
+          [(eqv? x #t)
+               '(())]
+          [(null? vars)
+               (error 'zdd->subsets "not enough variables for building subsets!")]
+          [(eqv? (zdd-var dd x) var-id)
+               (let ([v1 (car vars)]
+                     [lo (zdd-lo dd x)]
+                     [hi (zdd-hi dd x)])
+                 (if (eqv? lo hi)
+                     (let ([vs (subsets lo (cdr vars) (add1 var-id))])
+                       (foldr (lambda (vv va)
+                                (cons (cons v1 vv) va))
+                              vs
+                              vs))
+                     (let ([vs0 (subsets lo (cdr vars) (add1 var-id))]
+                           [vs1 (subsets hi (cdr vars) (add1 var-id))])
+                       (foldr (lambda (vv va)
+                                (cons (cons v1 vv) va))
+                              vs0
+                              vs1))))]
+          [else
+               (subsets x (cdr vars) (add1 var-id))]))
+
+  (subsets (zdd-root dd) vars 1))
+
+;;****************************************************************************
+
 (define (zdd->b-expr dd vars)
   (define (dd->be x vars var-id)
     (cond [(eqv? x #f)
@@ -192,7 +306,7 @@
                (if (null? vars) #t
                    (list* 'and (map (lambda (v) `(not ,v)) vars)))]
           [(null? vars)
-               (error 'bdd->b-expr "not enough variables for building boolean expression!")]
+               (error 'zdd->b-expr "not enough variables for building boolean expression!")]
           [(eqv? (zdd-var dd x) var-id)
                (let ([lo (zdd-lo dd x)]
                      [hi (zdd-hi dd x)])
