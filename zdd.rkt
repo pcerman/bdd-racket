@@ -18,6 +18,7 @@
 (provide make-zdd
          zdd-off-set
          zdd-on-set
+         zdd-change
          zdd-union
          zdd-intersect
          zdd-difference
@@ -86,21 +87,21 @@
 ;;****************************************************************************
 
 (define (zdd-off-set dd var-id)
-  (define (offset tt ht gt z)
+  (define (off-set tt ht gt z)
     (cond [(boolean? z)
                (values tt ht gt z)]
           [(hash-has-key? gt z)
                (values tt ht gt (hash-ref gt z))]
           [(eqv? (zdd-var dd z) var-id)
-               (let-values ([(tt ht gt lo) (offset tt ht gt (zdd-lo dd z))])
+               (let-values ([(tt ht gt lo) (off-set tt ht gt (zdd-lo dd z))])
                  (values tt ht (hash-set gt z lo) lo))]
           [else
-               (let*-values ([(tt ht gt lo) (offset tt ht gt (zdd-lo dd z))]
-                             [(tt ht gt hi) (offset tt ht gt (zdd-hi dd z))]
+               (let*-values ([(tt ht gt lo) (off-set tt ht gt (zdd-lo dd z))]
+                             [(tt ht gt hi) (off-set tt ht gt (zdd-hi dd z))]
                              [(tt ht zn) (make-node tt ht (zdd-var dd z) lo hi)])
                  (values tt ht (hash-set gt z zn) zn))]))
 
-  (let-values ([(tt ht gt zn) (offset '(0) (hash) (hash) (zdd-root dd))])
+  (let-values ([(tt ht gt zn) (off-set '(0) (hash) (hash) (zdd-root dd))])
     (if (boolean? zn)
         (zdd-value zn)
         (zdd-nodes (list->vector (reverse (cdr tt)))))))
@@ -108,21 +109,71 @@
 ;;****************************************************************************
 
 (define (zdd-on-set dd var-id)
-  (define (offset tt ht gt z)
+  (define (z-copy tt ht gt z)
     (cond [(boolean? z)
                (values tt ht gt z)]
           [(hash-has-key? gt z)
                (values tt ht gt (hash-ref gt z))]
-          [(eqv? (zdd-var dd z) var-id)
-               (let-values ([(tt ht gt hi) (offset tt ht gt (zdd-hi dd z))])
-                 (values tt ht (hash-set gt z hi) hi))]
           [else
-               (let*-values ([(tt ht gt lo) (offset tt ht gt (zdd-lo dd z))]
-                             [(tt ht gt hi) (offset tt ht gt (zdd-hi dd z))]
+               (let*-values ([(tt ht gt lo) (z-copy tt ht gt (zdd-lo dd z))]
+                             [(tt ht gt hi) (z-copy tt ht gt (zdd-hi dd z))]
                              [(tt ht zn) (make-node tt ht (zdd-var dd z) lo hi)])
                  (values tt ht (hash-set gt z zn) zn))]))
 
-  (let-values ([(tt ht gt zn) (offset '(0) (hash) (hash) (zdd-root dd))])
+  (define (on-set tt ht gt z)
+    (cond [(or (boolean? z) (> (zdd-var dd z) var-id))
+               (values tt ht gt #f)]
+          [(hash-has-key? gt z)
+               (values tt ht gt (hash-ref gt z))]
+          [(eqv? (zdd-var dd z) var-id)
+               (z-copy tt ht gt (zdd-hi dd z))]
+          [else
+               (let*-values ([(tt ht gt lo) (on-set tt ht gt (zdd-lo dd z))]
+                             [(tt ht gt hi) (on-set tt ht gt (zdd-hi dd z))]
+                             [(tt ht zn) (make-node tt ht (zdd-var dd z) lo hi)])
+                 (values tt ht (hash-set gt z zn) zn))]))
+
+  (let-values ([(tt ht gt zn) (on-set '(0) (hash) (hash) (zdd-root dd))])
+    (if (boolean? zn)
+        (zdd-value zn)
+        (zdd-nodes (list->vector (reverse (cdr tt)))))))
+
+;;****************************************************************************
+
+(define (zdd-change dd var-id)
+  (define (z-copy tt ht gt z)
+    (cond [(boolean? z)
+               (values tt ht gt z)]
+          [(hash-has-key? gt z)
+               (values tt ht gt (hash-ref gt z))]
+          [else
+               (let*-values ([(tt ht gt lo) (z-copy tt ht gt (zdd-lo dd z))]
+                             [(tt ht gt hi) (z-copy tt ht gt (zdd-hi dd z))]
+                             [(tt ht zn) (make-node tt ht (zdd-var dd z) lo hi)])
+                 (values tt ht (hash-set gt z zn) zn))]))
+
+  (define (change tt ht gt z)
+    (cond [(boolean? z)
+               (let-values ([(tt ht zn) (make-node tt ht var-id #f z)])
+                 (values tt ht gt zn))]
+          [(hash-has-key? gt z)
+               (values tt ht gt (hash-ref gt z))]
+          [(> (zdd-var dd z) var-id)
+               (let*-values ([(tt ht gt hi) (z-copy tt ht gt z)]
+                             [(tt ht zn) (make-node tt ht var-id #f hi)])
+                 (values tt ht (hash-set gt z zn) zn))]
+          [(eqv? (zdd-var dd z) var-id)
+               (let*-values ([(tt ht gt lo) (z-copy tt ht gt (zdd-lo dd z))]
+                             [(tt ht gt hi) (z-copy tt ht gt (zdd-hi dd z))]
+                             [(tt ht zn) (make-node tt ht (zdd-var dd z) hi lo)])
+                 (values tt ht (hash-set gt z zn) zn))]
+          [else
+               (let*-values ([(tt ht gt lo) (change tt ht gt (zdd-lo dd z))]
+                             [(tt ht gt hi) (change tt ht gt (zdd-hi dd z))]
+                             [(tt ht zn) (make-node tt ht (zdd-var dd z) lo hi)])
+                   (values tt ht (hash-set gt z zn) zn))]))
+
+  (let-values ([(tt ht gt zn) (change '(0) (hash) (hash) (zdd-root dd))])
     (if (boolean? zn)
         (zdd-value zn)
         (zdd-nodes (list->vector (reverse (cdr tt)))))))
